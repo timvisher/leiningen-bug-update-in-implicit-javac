@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+info() { echo "INFO: $*"; }
+
+check() { echo '✓'; }
+
+nope() { echo 'Nope. :('; exit 1; }
+
+check_or_nope() {
+  if [[ $1 == ! ]]
+  then
+    if ! "${@:2}"
+    then
+      check
+    else
+      nope
+    fi
+  else
+    if "$@"
+    then
+      check
+    else
+      nope
+    fi
+  fi
+  for i in {1..5}; do echo; done
+}
+
+info '`project.clj` at run time:'
+check_or_nope cat project.clj
+
+info 'java is not `installed` or available in PATH?'
+check_or_nope ! java -version
+
+info "But it's available as a standalone installation"'?'
+check_or_nope /java/bin/java -version
+
+export JAVA_CMD=/java/bin/java
+export LEIN_ROOT=t
+export DEBUG=t
+
+info 'I work because JAVA_CMD has been set to the standalane installation'
+check_or_nope ./lein do clean, pprint, run -m main, clean
+
+info "I don't work because I activate the "'`non-existent-java`'" profile"
+check_or_nope ! ./lein with-profile non-existent-java do clean, pprint, run -m main, clean
+
+info 'I work again because I use `update-in` to set the java-cmd to the'
+info 'standalone installation _and_ dissoc the `:java-source-paths` from'
+info 'the project. The implicit `javac` task is still triggered but'
+info 'because `:java-source-paths` was `dissoc`ed it appears to be a'
+info 'no-op that doesn'"'"'t trigger the bug.'
+check_or_nope ./lein with-profile non-existent-java \
+              update-in : assoc :java-cmd '"/java/bin/java"' -- \
+              update-in : dissoc :java-source-paths -- \
+              do clean, pprint, run -m main, clean
+
+info 'I don'"'"'t work because I didn'"'"'t dissoc the'
+info '`:java-source-paths` key from the project, despite setting the'
+info ':java-cmd in the project root. For whatever reason, the implicit'
+info '`javac` appears to not receive my `update-in`ed project map and'
+info 'instead receives the original thing.'
+check_or_nope ! ./lein with-profile non-existent-java \
+              update-in : assoc :java-cmd '"/java/bin/java"' -- \
+              do clean, pprint, run -m main, clean

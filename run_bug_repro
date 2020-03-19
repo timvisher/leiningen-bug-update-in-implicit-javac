@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+temp_space=${1:-$(mktemp -d '/tmp/leiningen_bug.XXXXXXXXX')}
+zulu_install=${temp_space}/zulu_install
+temp_m2=${temp_space}/temp_m2
+
+mkdir -v "$zulu_install" "$temp_m2"
+
+if [[ ! -x "$zulu_install"/bin/java ]]
+then
+  if ! curl --silent \
+       https://cdn.azul.com/zulu/bin/zulu8.44.0.13-ca-fx-jdk8.0.242-linux_x64.tar.gz |
+      tar --strip-components 1 -xz -C "$zulu_install"
+  then
+    echo 'ERROR: Could not download zulu OpenJDK' >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -x ./lein ]]
+then
+  # 2.9.3 was 'stable' as of 2020-03-19T09:17:28
+  if ! curl --silent https://raw.githubusercontent.com/technomancy/leiningen/2.9.3/bin/lein > ./lein &&
+      chmod +x ./lein
+  then
+    echo 'ERROR: Could not download leiningen 2.9.3' >&2
+    exit 1
+  fi
+fi
+
+if ! docker run -it --rm -v "$zulu_install":/java -v "$PWD":/mnt \
+     -v "$temp_m2":/root/.m2 -w /mnt -e HOME=/mnt buildpack-deps:18.04 ./bug_repro
+then
+  echo 'ERROR: Could not run ./bug_repro in docker' >&2
+  exit 1
+fi
+
+echo '# To run again with cached dependencies:'
+echo './run_bug_repro '"'${temp_space}'"
